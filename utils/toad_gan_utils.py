@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 from torch.nn.functional import interpolate
 import os
-
+import matplotlib.pyplot as plt
 
 # Object containing all important data for a TOAD-GAN
 class TOADGAN_obj():
@@ -92,6 +92,9 @@ def generate_sample(generators, noise_maps, reals, noise_amplitudes, num_layer, 
             if is_bboxed:
                 if gen_start_scale == 0:
                     z_noise = generate_spatial_noise([1, channels, int(round(nzx)), int(round(nzy))], device=device)
+
+                    #changes to various noise channels will change the occurance of certain blocks
+
                     z_noise = m(z_noise)
                     z_curr = in_states[1][current_scale]
                     z_curr[0, :, bbox[0] + n_pad:bbox[1] + n_pad, bbox[2] + n_pad:bbox[3] + n_pad] = \
@@ -130,6 +133,32 @@ def generate_sample(generators, noise_maps, reals, noise_amplitudes, num_layer, 
         # Main Step
         z_in = noise_amp * z_curr + I_prev
         I_curr = G(z_in.detach(), I_prev, temperature=1)
+
+        if current_scale == 0:
+            #seed_ground = torch.full([1, 1, int(round(nzx)), int(round(nzy))], 10, device=device) #sets all values in tensor to 10
+
+            #import test seed 
+            test_seed_img = plt.imread("utils/test-ground-seed.png")
+            test_seed = torch.Tensor(1 - test_seed_img[:, :, 0])
+            test_seed = test_seed.unsqueeze(0).unsqueeze(0) #change shape from [h, w] to [1, 1, h, w]
+
+            test_coin_seed_img = plt.imread("utils/test-coin-seed.png")
+            test_coin_seed = torch.Tensor(1 - test_coin_seed_img[:, :, 0])
+            test_coin_seed = test_coin_seed.unsqueeze(0).unsqueeze(0) #change shape from [h, w] to [1, 1, h, w]
+
+            for token in (token_list):
+                if token == 'X':  # ground token 
+                    tmp = test_seed.clone().to(device) #makes a copy of the seed_ground tensor and sends it to CPU 
+                    I_curr[0, token_list.index(token)] = tmp   #sets I_curr to seed_ground tensor
+                else:  # Other tokens like walls
+                    I_curr[0, token_list.index(token)] = torch.min(I_curr[0, token_list.index(token)],
+                                                                    1 - test_seed.to(device))
+                # if token == 'o': # coin token 
+                #     tmp = test_coin_seed.clone().to(device) 
+                #     I_curr[0, token_list.index(token)] = tmp  
+                # else:  # Other tokens like walls
+                #     I_curr[0, token_list.index(token)] = torch.min(I_curr[0, token_list.index(token)],
+                #                                                     1 - test_coin_seed.to(device))
 
         # Append results
         images_cur.append(I_curr)
